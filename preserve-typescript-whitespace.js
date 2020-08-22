@@ -1,5 +1,10 @@
 var through2 = require('through2');
 
+const NEW_LINE_TAG = "N";
+const SPACES_TAG = "S";
+const SPACES_BEFORE_COLON_TAG = "C";
+const SAME_LINE_ELSE_TAG = "E";
+
 const stringOrCommentEnd = {
     "'": /(?<!(?:^|[^\\])(?:\\\\)*\\)'/, // ignore quotes preceded by odd number of slashes
     '"': /(?<!(?:^|[^\\])(?:\\\\)*\\)"/,
@@ -63,32 +68,34 @@ function saveWhitespace() {
         let blocks = parseStringAndComments(contents);
         let isFileStart = true;
 
+        const NEW_LINE_REPLACEMENT = "/*" + NEW_LINE_TAG + "*/$1";
+
         for (const block of blocks) {
             block.code = block.code
                 .replace(/\}( *)else/g, function replacer(match, group1) {
-                    return "} /*ELSE" + group1.length + "*/else";
+                    return "} /*" + SAME_LINE_ELSE_TAG + group1.length + "*/else";
                 })
 
             if (isFileStart) {
                 block.code = block.code
                     .replace(/(?<=[^ \n])( +):/g, function replacer(match, group1) {
-                        return " /*C" + group1.length + "*/:";
+                        return " /*" + SPACES_BEFORE_COLON_TAG + group1.length + "*/:";
                     })
                     .replace(/(?<=[^ \n])(  +)/g, function replacer(match, group1) {
-                        return " /*S" + group1.length + "*/ ";
+                        return " /*" + SPACES_TAG + group1.length + "*/ ";
                     })
-                    .replace(/(?<=(?:^|\n)[ \t]*)(\r?\n)/g, "/*N*/$1"); // empty line at file start
+                    .replace(/(?<=(?:^|\n)[ \t]*)(\r?\n)/g, NEW_LINE_REPLACEMENT); // empty line at file start
 
                 isFileStart = false;
             } else {
                 block.code = block.code
                     .replace(/(?<=^|[^ \n])( +):/g, function replacer(match, group1) {
-                        return " /*C" + group1.length + "*/:";
+                        return " /*" + SPACES_BEFORE_COLON_TAG + group1.length + "*/:";
                     })
                     .replace(/(?<=^|[^ \n])(  +)/g, function replacer(match, group1) {
-                        return " /*S" + group1.length + "*/ ";
+                        return " /*" + SPACES_TAG + group1.length + "*/ ";
                     })
-                    .replace(/(?<=\n[ \t]*)(\r?\n)/g, "/*N*/$1"); // empty line
+                    .replace(/(?<=\n[ \t]*)(\r?\n)/g, NEW_LINE_REPLACEMENT); // empty line
             }
         }
 
@@ -104,24 +111,24 @@ function restoreWhitespace() {
         let contents = file.contents.toString(encoding);
 
         // new lines
-        contents = contents.replace(/\/\*N\*\//g, "");
+        contents = contents.replace(new RegExp("\\/\\*" + NEW_LINE_TAG + "\\*\\/", "g"), "");
 
         // spaces before :
-        contents = contents.replace(/ ?\/\*C([0-9]+)\*\/:/g, function replacer(match, group1) {
+        contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/:", "g"), function replacer(match, group1) {
             let spacesCount = Number(group1);
             return " ".repeat(spacesCount) + ":";
         });
-        contents = contents.replace(/ ?\/\*C([0-9]+)\*\/(?=[,;\)\} \t\r\n])/g, ""); // can safely collapse
-        contents = contents.replace(/ ?\/\*C([0-9]+)\*\//g, " "); // cannot fully collapse, leave one space
+        contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/(?=[,;\\)\\} \\t\\r\\n])", "g"), ""); // can safely collapse
+        contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/", "g"), " "); // cannot fully collapse, leave one space
 
         // multiple other spaces
-        contents = contents.replace(/\/\*S([0-9]+)\*\//g, function replacer(match, group1) {
+        contents = contents.replace(new RegExp("\\/\\*" + SPACES_TAG + "([0-9]+)\\*\\/", "g"), function replacer(match, group1) {
             let spacesCount = Number(group1);
             return " ".repeat(spacesCount - 2);
         });
 
         // "} else" in separate lines
-        contents = contents.replace(/\} \/\*ELSE([0-9]+)\*\/\r?\n[ \t]*else/g, function replacer(match, group1) {
+        contents = contents.replace(new RegExp("\\} \\/\\*" + SAME_LINE_ELSE_TAG + "([0-9]+)\\*\\/\\r?\\n[ \\t]*else", "g"), function replacer(match, group1) {
             let spacesCount = Number(group1);
             return "}" + " ".repeat(spacesCount) + "else";
         });
