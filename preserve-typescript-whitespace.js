@@ -1,9 +1,111 @@
 var through2 = require('through2');
 
-const NEW_LINE_TAG = "N";
-const SPACES_TAG = "S";
-const SPACES_BEFORE_COLON_TAG = "C";
-const SAME_LINE_ELSE_TAG = "E";
+const FILE_METADATA_TAG = "PRESERVE_TYPESCRIPT_WHITESPACE_METADATA";
+
+const preferredTags = {
+    NEW_LINE_TAG: ["N", "n"],
+    SPACES_TAG: ["S", "s"],
+    SPACES_BEFORE_COLON_TAG: ["C", "c"],
+    SAME_LINE_ELSE_TAG: ["E", "e"]
+};
+
+const TAG_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+function createTagForOrdinal(ordinal) {
+    let tag = ""
+    do {
+        let tagChar = TAG_CHARS[ordinal % TAG_CHARS.length];
+        tag = tagChar + tag;
+        ordinal = Math.floor(ordinal / TAG_CHARS.length);
+    } while (ordinal > 0);
+    return tag;
+}
+
+function isSimpleTagPresent(fileContents, tag) {
+    let index = fileContents.search(new RegExp("\\/\\*" + tag + "\\*\\/"));
+    return (index !== -1);
+}
+
+function isTagWithCountPresent(fileContents, tag) {
+    let index = fileContents.search(new RegExp("\\/\\*" + tag + "([0-9]+)\\*\\/"));
+    return (index !== -1);
+}
+
+class UnusedTagsFinder {
+    constructor(fileContents) {
+        this.fileContents = fileContents;
+        this.checkedSimpleTags = new Set();
+        this.checkedTagsWithCount = new Set();
+    }
+
+    findUnusedTag(preferredTags, isTagWithCount) {
+        const checkedTagsSet = isTagWithCount ? this.checkedTagsWithCount : this.checkedSimpleTags;
+        const isTagPresentFunc = isTagWithCount ? isTagWithCountPresent : isSimpleTagPresent;
+
+        for (const tag of preferredTags) {
+            if (!checkedTagsSet.has(tag)) {
+                checkedTagsSet.add(tag);
+
+                if (!isTagPresentFunc(this.fileContents, tag)) {
+                    return tag;
+                }/* else {
+                    console.debug("Tag already present:", tag);
+                }*/
+            }
+        }
+
+        for (let i = 0; ; i++) {
+            const tag = createTagForOrdinal(i);
+            if (!checkedTagsSet.has(tag)) {
+                checkedTagsSet.add(tag);
+
+                if (!isTagPresentFunc(this.fileContents, tag)) {
+                    return tag;
+                }/* else {
+                    console.debug("Tag already present:", tag);
+                }*/
+            }
+        }
+    }
+}
+
+class ParsedFileMetadata {
+    constructor(metadata) {
+        this.metadata = metadata;
+    }
+
+    serialize() {
+        return "/*" + FILE_METADATA_TAG + JSON.stringify(this.metadata) + FILE_METADATA_TAG + "*/\n";
+    }
+
+    static deserialize(fileContents) {
+        let startTag = "/*" + FILE_METADATA_TAG;
+        let endTag = FILE_METADATA_TAG + "*/\n";
+
+        let startTagIndex = fileContents.indexOf(startTag);
+        let endTagIndex = fileContents.lastIndexOf(endTag);
+        if (startTagIndex === -1 || endTagIndex === -1) {
+            return null;
+        }
+
+        let metadataStartIndex = startTagIndex + startTag.length;
+        let endIndex = endTagIndex + endTag.length;
+
+        let serializedMetadata = fileContents.slice(metadataStartIndex, endTagIndex);
+        let metadata = JSON.parse(serializedMetadata);
+
+        let metadataObj = new ParsedFileMetadata(metadata);
+        metadataObj.startIndex = startTagIndex;
+        metadataObj.endIndex = endIndex;
+
+        return metadataObj;
+    }
+
+    removeFrom(fileContents) {
+        return fileContents.slice(0, this.startIndex) + fileContents.slice(this.endIndex);
+    }
+}
+
 
 const stringOrCommentEnd = {
     "'": /(?<!(?:^|[^\\])(?:\\\\)*\\)'/, // ignore quotes preceded by odd number of slashes
@@ -65,10 +167,17 @@ function rebuildCodeFromBlocks(blocks) {
 function saveWhitespace() {
     return through2.obj(function (file, encoding, callback) {
         let contents = file.contents.toString(encoding);
-        let blocks = parseStringAndComments(contents);
-        let isFileStart = true;
+
+        let unusedTagsFinder = new UnusedTagsFinder(contents);
+        const NEW_LINE_TAG            = unusedTagsFinder.findUnusedTag(preferredTags.NEW_LINE_TAG, false);
+        const SPACES_TAG              = unusedTagsFinder.findUnusedTag(preferredTags.SPACES_TAG, true);
+        const SPACES_BEFORE_COLON_TAG = unusedTagsFinder.findUnusedTag(preferredTags.SPACES_BEFORE_COLON_TAG, true);
+        const SAME_LINE_ELSE_TAG      = unusedTagsFinder.findUnusedTag(preferredTags.SAME_LINE_ELSE_TAG, true);
 
         const NEW_LINE_REPLACEMENT = "/*" + NEW_LINE_TAG + "*/$1";
+
+        let blocks = parseStringAndComments(contents);
+        let isFileStart = true;
 
         for (const block of blocks) {
             block.code = block.code
@@ -100,6 +209,15 @@ function saveWhitespace() {
         }
 
         contents = rebuildCodeFromBlocks(blocks);
+
+        let metadata = new ParsedFileMetadata({
+            NEW_LINE_TAG,
+            SPACES_TAG,
+            SPACES_BEFORE_COLON_TAG,
+            SAME_LINE_ELSE_TAG
+        });
+        contents = metadata.serialize() + contents;
+
         file.contents = Buffer.from(contents, encoding);
 
         callback(null, file);
@@ -109,6 +227,15 @@ function saveWhitespace() {
 function restoreWhitespace() {
     return through2.obj(function (file, encoding, callback) {
         let contents = file.contents.toString(encoding);
+
+        let metadataObj = ParsedFileMetadata.deserialize(contents);
+        let metadata = metadataObj.metadata;
+        contents = metadataObj.removeFrom(contents);
+
+        const NEW_LINE_TAG            = metadata.NEW_LINE_TAG;
+        const SPACES_TAG              = metadata.SPACES_TAG;
+        const SPACES_BEFORE_COLON_TAG = metadata.SPACES_BEFORE_COLON_TAG;
+        const SAME_LINE_ELSE_TAG      = metadata.SAME_LINE_ELSE_TAG;
 
         // new lines
         contents = contents.replace(new RegExp("\\/\\*" + NEW_LINE_TAG + "\\*\\/", "g"), "");
