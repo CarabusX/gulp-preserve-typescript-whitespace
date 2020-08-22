@@ -1,5 +1,14 @@
 var through2 = require('through2');
 
+const defaultOptions = {
+    preserveNewLines: true,
+    preserveMultipleSpaces: true,
+    preserveSpacesBeforeColons: true,
+    collapseSpacesBeforeRemovedColons: true,
+    preserveSameLineElse: true,
+    showDebugOutput: false
+};
+
 const FILE_METADATA_TAG = "PRESERVE_TYPESCRIPT_WHITESPACE_METADATA";
 
 const preferredTags = {
@@ -32,8 +41,9 @@ function isTagWithCountPresent(fileContents, tag) {
 }
 
 class UnusedTagsFinder {
-    constructor(fileContents) {
+    constructor(fileContents, options) {
         this.fileContents = fileContents;
+        this.options = options;
         this.checkedSimpleTags = new Set();
         this.checkedTagsWithCount = new Set();
     }
@@ -48,9 +58,9 @@ class UnusedTagsFinder {
 
                 if (!isTagPresentFunc(this.fileContents, tag)) {
                     return tag;
-                }/* else {
+                } else if (this.options.showDebugOutput) {
                     console.debug("Tag already present:", tag);
-                }*/
+                }
             }
         }
 
@@ -61,9 +71,9 @@ class UnusedTagsFinder {
 
                 if (!isTagPresentFunc(this.fileContents, tag)) {
                     return tag;
-                }/* else {
+                } else if (this.options.showDebugOutput) {
                     console.debug("Tag already present:", tag);
-                }*/
+                }
             }
         }
     }
@@ -164,11 +174,24 @@ function rebuildCodeFromBlocks(blocks) {
         .join("");
 }
 
-function saveWhitespace() {
+/* Also filters out invalid keys */
+function extendOptionsWithDefaults(_options, defaultOptions) {
+    _options = _options || {};
+
+    let options = {};
+    for (const key of Object.keys(defaultOptions)) {
+        options[key] = _options.hasOwnProperty(key) ? _options[key] : defaultOptions[key];
+    }
+    return options;
+}
+
+function saveWhitespace(options) {
+    options = extendOptionsWithDefaults(options, defaultOptions);
+
     return through2.obj(function (file, encoding, callback) {
         let contents = file.contents.toString(encoding);
 
-        let unusedTagsFinder = new UnusedTagsFinder(contents);
+        let unusedTagsFinder = new UnusedTagsFinder(contents, options);
         const NEW_LINE_TAG            = unusedTagsFinder.findUnusedTag(preferredTags.NEW_LINE_TAG, false);
         const SPACES_TAG              = unusedTagsFinder.findUnusedTag(preferredTags.SPACES_TAG, true);
         const SPACES_BEFORE_COLON_TAG = unusedTagsFinder.findUnusedTag(preferredTags.SPACES_BEFORE_COLON_TAG, true);
@@ -180,37 +203,58 @@ function saveWhitespace() {
         let isFileStart = true;
 
         for (const block of blocks) {
-            block.code = block.code
-                .replace(/\}( *)else/g, function replacer(match, group1) {
-                    return "} /*" + SAME_LINE_ELSE_TAG + group1.length + "*/else";
-                })
-
-            if (isFileStart) {
+            if (options.preserveSameLineElse) {
                 block.code = block.code
-                    .replace(/(?<=[^ \n])( +):/g, function replacer(match, group1) {
-                        return " /*" + SPACES_BEFORE_COLON_TAG + group1.length + "*/:";
+                    .replace(/\}( *)else/g, function replacer(match, group1) {
+                        return "} /*" + SAME_LINE_ELSE_TAG + group1.length + "*/else";
                     })
-                    .replace(/(?<=[^ \n])(  +)/g, function replacer(match, group1) {
-                        return " /*" + SPACES_TAG + group1.length + "*/ ";
-                    })
-                    .replace(/(?<=(?:^|\n)[ \t]*)(\r?\n)/g, NEW_LINE_REPLACEMENT); // empty line at file start
-
-                isFileStart = false;
-            } else {
-                block.code = block.code
-                    .replace(/(?<=^|[^ \n])( +):/g, function replacer(match, group1) {
-                        return " /*" + SPACES_BEFORE_COLON_TAG + group1.length + "*/:";
-                    })
-                    .replace(/(?<=^|[^ \n])(  +)/g, function replacer(match, group1) {
-                        return " /*" + SPACES_TAG + group1.length + "*/ ";
-                    })
-                    .replace(/(?<=\n[ \t]*)(\r?\n)/g, NEW_LINE_REPLACEMENT); // empty line
             }
+
+            if (options.preserveSpacesBeforeColons) {
+                if (isFileStart) {
+                    block.code = block.code
+                        .replace(/(?<=[^ \n])( +):/g, function replacer(match, group1) {
+                            return " /*" + SPACES_BEFORE_COLON_TAG + group1.length + "*/:";
+                        });
+                } else {
+                    block.code = block.code
+                        .replace(/(?<=^|[^ \n])( +):/g, function replacer(match, group1) {
+                            return " /*" + SPACES_BEFORE_COLON_TAG + group1.length + "*/:";
+                        });
+                }
+            }
+
+            if (options.preserveMultipleSpaces) {
+                if (isFileStart) {
+                    block.code = block.code
+                        .replace(/(?<=[^ \n])(  +)(?![ :])/g, function replacer(match, group1) {
+                            return " /*" + SPACES_TAG + group1.length + "*/ ";
+                        });
+                } else {
+                    block.code = block.code
+                        .replace(/(?<=^|[^ \n])(  +)(?![ :])/g, function replacer(match, group1) {
+                            return " /*" + SPACES_TAG + group1.length + "*/ ";
+                        });
+                }
+            }
+
+            if (options.preserveNewLines) {
+                if (isFileStart) {
+                    block.code = block.code
+                        .replace(/(?<=(?:^|\n)[ \t]*)(\r?\n)/g, NEW_LINE_REPLACEMENT); // empty line at file start
+                } else {
+                    block.code = block.code
+                        .replace(/(?<=\n[ \t]*)(\r?\n)/g, NEW_LINE_REPLACEMENT); // empty line
+                }
+            }
+
+            isFileStart = false;
         }
 
         contents = rebuildCodeFromBlocks(blocks);
 
         let metadata = new ParsedFileMetadata({
+            options,
             NEW_LINE_TAG,
             SPACES_TAG,
             SPACES_BEFORE_COLON_TAG,
@@ -232,33 +276,46 @@ function restoreWhitespace() {
         let metadata = metadataObj.metadata;
         contents = metadataObj.removeFrom(contents);
 
+        const options                 = metadata.options;
         const NEW_LINE_TAG            = metadata.NEW_LINE_TAG;
         const SPACES_TAG              = metadata.SPACES_TAG;
         const SPACES_BEFORE_COLON_TAG = metadata.SPACES_BEFORE_COLON_TAG;
         const SAME_LINE_ELSE_TAG      = metadata.SAME_LINE_ELSE_TAG;
 
-        // new lines
-        contents = contents.replace(new RegExp("\\/\\*" + NEW_LINE_TAG + "\\*\\/", "g"), "");
+        if (options.preserveNewLines) {
+            contents = contents.replace(new RegExp("\\/\\*" + NEW_LINE_TAG + "\\*\\/", "g"), "");
+        }
 
-        // spaces before :
-        contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/:", "g"), function replacer(match, group1) {
-            let spacesCount = Number(group1);
-            return " ".repeat(spacesCount) + ":";
-        });
-        contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/(?=[,;\\)\\} \\t\\r\\n])", "g"), ""); // can safely collapse
-        contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/", "g"), " "); // cannot fully collapse, leave one space
+        if (options.preserveSpacesBeforeColons) {
+            contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/:", "g"), function replacer(match, group1) {
+                let spacesCount = Number(group1);
+                return " ".repeat(spacesCount) + ":";
+            });
 
-        // multiple other spaces
-        contents = contents.replace(new RegExp("\\/\\*" + SPACES_TAG + "([0-9]+)\\*\\/", "g"), function replacer(match, group1) {
-            let spacesCount = Number(group1);
-            return " ".repeat(spacesCount - 2);
-        });
+            if (options.collapseSpacesBeforeRemovedColons) {
+                contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/(?=[,;\\)\\} \\t\\r\\n])", "g"), ""); // can safely collapse
+                contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/", "g"), " "); // cannot fully collapse, leave one space
+            } else {
+                contents = contents.replace(new RegExp(" ?\\/\\*" + SPACES_BEFORE_COLON_TAG + "([0-9]+)\\*\\/", "g"), function replacer(match, group1) {
+                    let spacesCount = Number(group1);
+                    return " ".repeat(spacesCount);
+                });
+            }
+        }
 
-        // "} else" in separate lines
-        contents = contents.replace(new RegExp("\\} \\/\\*" + SAME_LINE_ELSE_TAG + "([0-9]+)\\*\\/\\r?\\n[ \\t]*else", "g"), function replacer(match, group1) {
-            let spacesCount = Number(group1);
-            return "}" + " ".repeat(spacesCount) + "else";
-        });
+        if (options.preserveMultipleSpaces) {
+            contents = contents.replace(new RegExp("\\/\\*" + SPACES_TAG + "([0-9]+)\\*\\/", "g"), function replacer(match, group1) {
+                let spacesCount = Number(group1);
+                return " ".repeat(spacesCount - 2);
+            });
+        }
+
+        if (options.preserveSameLineElse) {
+            contents = contents.replace(new RegExp("\\} \\/\\*" + SAME_LINE_ELSE_TAG + "([0-9]+)\\*\\/\\r?\\n[ \\t]*else", "g"), function replacer(match, group1) {
+                let spacesCount = Number(group1);
+                return "}" + " ".repeat(spacesCount) + "else";
+            });
+        }
 
         file.contents = Buffer.from(contents, encoding);
 
