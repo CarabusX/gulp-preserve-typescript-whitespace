@@ -1,0 +1,32 @@
+{
+  "name": "gulp-preserve-typescript-whitespace",
+  "version": "1.0.0",
+  "description": "A gulp plugin that preserves empty lines and multiple spaces in source files compiled from TypeScript to JavaScript.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://bitbucket.org/Carabus/gulp-preserve-typescript-whitespace"
+  },
+  "keywords": [
+    "gulpplugin",
+    "gulp",
+    "javascript",
+    "typescript",
+    "preserve",
+    "whitespace",
+    "white-space",
+    "newline",
+    "new-line",
+    "linebreak",
+    "line-break"
+  ],
+  "author": {
+    "name": "Rafał Karczmarczyk",
+    "email": "carabusx.npm@gmail.com"
+  },
+  "license": "ISC",
+  "bundleDependencies": false,
+  "dependencies": {
+    "through2": "^2.0.0"
+  }
+}
