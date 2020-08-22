@@ -211,41 +211,34 @@ function saveWhitespace(options) {
             }
 
             if (options.preserveSpacesBeforeColons) {
-                if (isFileStart) {
-                    block.code = block.code
-                        .replace(/(?<=[^ \n])( +):/g, function replacer(match, group1) {
-                            return " /*" + SPACES_BEFORE_COLON_TAG + group1.length + "*/:";
-                        });
-                } else {
-                    block.code = block.code
-                        .replace(/(?<=^|[^ \n])( +):/g, function replacer(match, group1) {
-                            return " /*" + SPACES_BEFORE_COLON_TAG + group1.length + "*/:";
-                        });
-                }
+                let regex = isFileStart ?
+                    /(?<=[^ \n])( +):/g :
+                    /(?<=^|[^ \n])( +):/g;
+
+                block.code = block.code
+                    .replace(regex, function replacer(match, group1) {
+                        return " /*" + SPACES_BEFORE_COLON_TAG + group1.length + "*/:";
+                    });
             }
 
             if (options.preserveMultipleSpaces) {
-                if (isFileStart) {
-                    block.code = block.code
-                        .replace(/(?<=[^ \n])(  +)(?![ :])/g, function replacer(match, group1) {
-                            return " /*" + SPACES_TAG + group1.length + "*/ ";
-                        });
-                } else {
-                    block.code = block.code
-                        .replace(/(?<=^|[^ \n])(  +)(?![ :])/g, function replacer(match, group1) {
-                            return " /*" + SPACES_TAG + group1.length + "*/ ";
-                        });
-                }
+                let regex = isFileStart ?
+                    /(?<=[^ \n])(  +)(?![ :])/g :
+                    /(?<=^|[^ \n])(  +)(?![ :])/g;
+
+                block.code = block.code
+                    .replace(regex, function replacer(match, group1) {
+                        return " /*" + SPACES_TAG + group1.length + "*/ ";
+                    });
             }
 
             if (options.preserveNewLines) {
-                if (isFileStart) {
-                    block.code = block.code
-                        .replace(/(?<=(?:^|\n)[ \t]*)(\r?\n)/g, NEW_LINE_REPLACEMENT); // empty line at file start
-                } else {
-                    block.code = block.code
-                        .replace(/(?<=\n[ \t]*)(\r?\n)/g, NEW_LINE_REPLACEMENT); // empty line
-                }
+                let regex = isFileStart ?
+                    /(?<=(?:^|\n)[ \t]*)(\r?\n)/g : // empty line possibly at file start
+                    /(?<=\n[ \t]*)(\r?\n)/g; // empty line
+
+                block.code = block.code
+                    .replace(regex, NEW_LINE_REPLACEMENT);
             }
 
             isFileStart = false;
