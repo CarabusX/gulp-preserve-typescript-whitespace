@@ -1,10 +1,13 @@
 /* Also filters out invalid keys. */
 function extendOptionsWithDefaults(_options, defaultOptions) {
     _options = _options || {};
+    if (_options.preserveSpacesBeforeColons === undefined) {
+        _options.preserveSpacesBeforeColons = _options.preserveMultipleSpaces;
+    }
 
     let options = {};
     for (const key of Object.keys(defaultOptions)) {
-        options[key] = _options.hasOwnProperty(key) ? _options[key] : defaultOptions[key];
+        options[key] = (_options[key] !== undefined) ? _options[key] : defaultOptions[key];
     }
     return options;
 }
