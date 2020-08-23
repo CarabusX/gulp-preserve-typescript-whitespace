@@ -1,6 +1,6 @@
 {
   "name": "gulp-preserve-typescript-whitespace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A gulp plugin that preserves empty lines and multiple spaces in source files compiled from TypeScript to JavaScript.",
   "main": "src/index.js",
   "repository": {
