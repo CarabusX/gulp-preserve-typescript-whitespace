@@ -84,11 +84,11 @@ class ParsedFileMetadata {
     }
 
     serialize() {
-        return "/*" + ParsedFileMetadata.FILE_METADATA_TAG + JSON.stringify(this.metadata) + ParsedFileMetadata.FILE_METADATA_TAG + "*/\n";
+        return "; /*" + ParsedFileMetadata.FILE_METADATA_TAG + JSON.stringify(this.metadata) + ParsedFileMetadata.FILE_METADATA_TAG + "*/\n";
     }
 
     static deserialize(file, fileContents) {
-        let startTagRegex = "\\/\\*" + ParsedFileMetadata.FILE_METADATA_TAG;
+        let startTagRegex = ";? ?\\/\\*" + ParsedFileMetadata.FILE_METADATA_TAG;
         let endTagRegex = ParsedFileMetadata.FILE_METADATA_TAG + "\\*\\/\\r?\\n?";
 
         let metadataMatch = fileContents.match(new RegExp(startTagRegex + "([\\s\\S]*?)" + endTagRegex));
