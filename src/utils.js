@@ -88,25 +88,25 @@ class ParsedFileMetadata {
     }
 
     static deserialize(file, fileContents) {
-        let startTag = "/*" + ParsedFileMetadata.FILE_METADATA_TAG;
-        let endTag = ParsedFileMetadata.FILE_METADATA_TAG + "*/\n";
+        let startTagRegex = "\\/\\*" + ParsedFileMetadata.FILE_METADATA_TAG;
+        let endTagRegex = ParsedFileMetadata.FILE_METADATA_TAG + "\\*\\/\\r?\\n?";
 
-        let startTagIndex = fileContents.indexOf(startTag);
-        let endTagIndex = fileContents.lastIndexOf(endTag);
-        if (startTagIndex === -1 || endTagIndex === -1) {
+        let metadataMatch = fileContents.match(new RegExp(startTagRegex + "([\\s\\S]*?)" + endTagRegex));
+
+        if (metadataMatch === null) {
             console.error("[" + PLUGIN_NAME + "] ERROR: Metadata tag not found in '" + file.path + "' file.")
             return null;
         }
 
-        let metadataStartIndex = startTagIndex + startTag.length;
-        let endIndex = endTagIndex + endTag.length;
+        let startTagIndex = metadataMatch.index;
+        let metadataWithTags = metadataMatch[0];
+        let serializedMetadata = metadataMatch[1];
 
-        let serializedMetadata = fileContents.slice(metadataStartIndex, endTagIndex);
         let metadata = JSON.parse(serializedMetadata);
 
         let metadataObj = new ParsedFileMetadata(metadata);
         metadataObj.startIndex = startTagIndex;
-        metadataObj.endIndex = endIndex;
+        metadataObj.endIndex = startTagIndex + metadataWithTags.length;
 
         return metadataObj;
     }
