@@ -105,6 +105,11 @@ function restoreWhitespace() {
         let contents = file.contents.toString(encoding);
 
         let metadataObj = ParsedFileMetadata.deserialize(file, contents);
+        if (metadataObj == null) {
+            callback(null, file);
+            return;
+        }
+
         let metadata = metadataObj.metadata;
         contents = metadataObj.removeFrom(contents);
 
