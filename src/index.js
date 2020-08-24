@@ -104,7 +104,7 @@ function restoreWhitespace() {
     return through2.obj(function (file, encoding, callback) {
         let contents = file.contents.toString(encoding);
 
-        let metadataObj = ParsedFileMetadata.deserialize(contents);
+        let metadataObj = ParsedFileMetadata.deserialize(file, contents);
         let metadata = metadataObj.metadata;
         contents = metadataObj.removeFrom(contents);
 

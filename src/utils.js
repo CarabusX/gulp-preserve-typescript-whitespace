@@ -1,3 +1,6 @@
+const PLUGIN_NAME = "gulp-preserve-typescript-whitespace";
+
+
 /* Also filters out invalid keys. */
 function extendOptionsWithDefaults(_options, defaultOptions) {
     _options = _options || {};
@@ -54,7 +57,7 @@ class UnusedTagsFinder {
                 if (!isTagPresentFunc(this.fileContents, tag)) {
                     return tag;
                 } else if (this.options.showDebugOutput) {
-                    console.debug("Tag already present:", tag);
+                    console.debug("[" + PLUGIN_NAME + "] Tag already present:", tag);
                 }
             }
         }
@@ -67,7 +70,7 @@ class UnusedTagsFinder {
                 if (!isTagPresentFunc(this.fileContents, tag)) {
                     return tag;
                 } else if (this.options.showDebugOutput) {
-                    console.debug("Tag already present:", tag);
+                    console.debug("[" + PLUGIN_NAME + "] Tag already present:", tag);
                 }
             }
         }
@@ -84,13 +87,14 @@ class ParsedFileMetadata {
         return "/*" + ParsedFileMetadata.FILE_METADATA_TAG + JSON.stringify(this.metadata) + ParsedFileMetadata.FILE_METADATA_TAG + "*/\n";
     }
 
-    static deserialize(fileContents) {
+    static deserialize(file, fileContents) {
         let startTag = "/*" + ParsedFileMetadata.FILE_METADATA_TAG;
         let endTag = ParsedFileMetadata.FILE_METADATA_TAG + "*/\n";
 
         let startTagIndex = fileContents.indexOf(startTag);
         let endTagIndex = fileContents.lastIndexOf(endTag);
         if (startTagIndex === -1 || endTagIndex === -1) {
+            console.error("[" + PLUGIN_NAME + "] ERROR: Metadata tag not found in '" + file.path + "' file.")
             return null;
         }
 
